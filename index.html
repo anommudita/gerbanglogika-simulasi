@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Interaktif Gerbang Logika</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#2563eb;--bg:#f1f5f9}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--ink);background:linear-gradient(160deg,#f8fafc,#e0ecff 70%);min-height:100vh}
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:clamp(22px,4vw,32px);margin:0 0 4px;font-weight:800}
+.sub{color:var(--mut);margin:0 0 20px}
+.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.tab,.pill,.btn{font:inherit;font-weight:700;border:2px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:10px 18px;cursor:pointer;transition:.15s}
+.tab.on,.pill.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.card{background:#fff;border-radius:20px;box-shadow:0 10px 30px rgba(30,64,175,.1);padding:20px}
+.q{background:#eff6ff;border-left:5px solid var(--acc);border-radius:12px;padding:12px 16px;font-weight:700;font-size:clamp(15px,2.4vw,19px);margin:12px 0}
+.ans{background:#ecfdf5;border-left:5px solid #16a34a;border-radius:12px;padding:12px 16px;margin-top:12px;line-height:1.7}
+.ans[hidden]{display:none}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.btn.go{background:#16a34a;border-color:#16a34a;color:#fff}
+.btn:hover,.pill:hover,.tab:hover{transform:translateY(-1px)}
+svg{width:100%;height:auto;display:block;background:#f8fafc;border-radius:16px;border:1px solid var(--line)}
+.beam{fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .65s ease-out}
+.beam.lit{stroke-dashoffset:0}
+.inp{cursor:pointer}.inp:hover circle{filter:brightness(.95)}
+.pop{animation:pop .5s ease}
+@keyframes pop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+.hint{font-size:13px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚡ Gerbang Logika Interaktif</h1>
+  <p class="sub">Klik lingkaran input untuk mengubah nilainya (0 ↔ 1). Output disembunyikan — tanyakan dulu kepada siswa, lalu tekan “Tampilkan Hasil”.</p>
+  <div class="tabs">
+    <button class="tab on" data-t="s1">1. Satu Gerbang</button>
+    <button class="tab" data-t="s2">2. Kombinasi Gerbang</button>
+  </div>
+
+  <section class="card" id="s1">
+    <div class="row"><span class="hint">Pilih gerbang:</span>
+      <button class="pill on" data-g="AND">AND</button><button class="pill" data-g="OR">OR</button></div>
+    <svg id="svg1" viewBox="0 0 600 300"></svg>
+    <div class="q" id="q1"></div>
+    <div class="row"><button class="btn go" id="go1">▶ Tampilkan Hasil</button><button class="btn" id="rs1">↺ Reset</button></div>
+    <div class="ans" id="a1" hidden></div>
+  </section>
+
+  <section class="card" id="s2" hidden>
+    <p class="hint" style="margin-top:0">Output gerbang OR (P) dan gerbang AND (Q) menjadi input gerbang OR berikutnya.</p>
+    <svg id="svg2" viewBox="0 0 840 460"></svg>
+    <div class="q" id="q2"></div>
+    <div class="row"><button class="btn go" id="go2">▶ Tampilkan Hasil</button><button class="btn" id="rs2">↺ Reset</button></div>
+    <div class="ans" id="a2" hidden></div>
+  </section>
+</div>
+
+<script>
+const S=1.4,NS='http://www.w3.org/2000/svg';
+const AND_D='M0,0 H40 A40,35 0 0 1 40,70 H0 Z',OR_D='M0,0 C30,0 60,10 80,35 C60,60 30,70 0,70 C18,50 18,20 0,0 Z';
+const E=(t,a={},p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
+const $=s=>document.querySelector(s);
+let uid=0;
+
+function Circuit(svg,inputs,gates,cb){
+  const id='b'+(uid++),timers=[],wires=[];
+  const defs=E('defs',{},svg);
+  E('feGaussianBlur',{stdDeviation:3},E('filter',{id,x:'-50%',y:'-50%',width:'200%',height:'200%'},defs));
+  const wl=E('g',{},svg),gl=E('g',{},svg),nl=E('g',{},svg);
+  const outPt=n=>n.t?[n.x+80*S,n.y+35*S]:[n.x+24,n.y];
+  const evalG=g=>{const a=g.src[0].v,b=g.src[1].v;g.v=g.t==='AND'?(a&b):(a|b)};
+  const curve=(x1,y1,x2,y2)=>{const m=(x1+x2)/2;return `M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}`};
+
+  function wire(x1,y1,x2,y2,src,gate,out){
+    const d=curve(x1,y1,x2,y2),w={src,gate,out,lvl:gate.lvl};
+    E('path',{d,fill:'none',stroke:'#cbd5e1','stroke-width':6,'stroke-linecap':'round'},wl);
+    w.beams=[['#38bdf8',14,'.55',1],['#2563eb',7,1],['#ffffff',2.5,1]].map(([c,wd,o,f])=>{
+      const p=E('path',{d,pathLength:1,class:'beam',stroke:c,'stroke-width':wd,opacity:o==1||o===undefined?1:o},wl);
+      if(f)p.setAttribute('filter',`url(#${id})`);return p});
+    wires.push(w);
+  }
+  gates.forEach(g=>{
+    g.src.forEach((s,i)=>{const [x,y]=outPt(s);wire(x,y,g.x+6,g.y+(i?50:20)*S,s,g,false)});
+    const [ox,oy]=outPt(g);
+    g.bx=ox+(g.final?100:36);g.by=oy;
+    if(g.final)wire(ox,oy,g.bx,g.by,g,g,true);
+  });
+  gates.forEach(g=>{
+    const gg=E('g',{transform:`translate(${g.x},${g.y}) scale(${S})`},gl);
+    g.shape=E('path',{fill:'#eef2ff',stroke:'#475569','stroke-width':3,'stroke-linejoin':'round'},gg);
+    g.txt=E('text',{'text-anchor':'middle','font-weight':800,'font-size':17,fill:'#334155',x:g.x+38*S,y:g.y+35*S+6},gl);
+    g.setT=t=>{g.t=t;g.shape.setAttribute('d',t==='AND'?AND_D:OR_D);g.txt.textContent=t};g.setT(g.t);
+    const b=E('g',{},nl);
+    E('text',{x:g.bx,y:g.by-32,'text-anchor':'middle','font-weight':800,'font-size':18,fill:'#475569'},b).textContent=g.l;
+    g.bg=E('g',{transform:`translate(${g.bx},${g.by})`},b);
+    g.bc=E('circle',{r:23,'stroke-width':3,stroke:'#94a3b8'},g.bg);
+    g.bt=E('text',{'text-anchor':'middle',y:8,'font-weight':800,'font-size':24},g.bg);
+  });
+  inputs.forEach(n=>{
+    const g=E('g',{class:'inp',transform:`translate(${n.x},${n.y})`},nl);
+    E('text',{x:-46,y:8,'font-weight':800,'font-size':22,fill:'#475569','text-anchor':'middle'},g).textContent=n.l;
+    n.c=E('circle',{r:24,'stroke-width':3},g);
+    n.t2=E('text',{'text-anchor':'middle',y:9,'font-weight':800,'font-size':26},g);
+    n.draw=()=>{n.c.setAttribute('fill',n.v?'#2563eb':'#fff');n.c.setAttribute('stroke',n.v?'#1d4ed8':'#94a3b8');n.t2.setAttribute('fill',n.v?'#fff':'#475569');n.t2.textContent=n.v};
+    n.draw();
+    g.onclick=()=>{n.v^=1;n.draw();reset();cb('change')};
+  });
+
+  function later(ms,f){timers.push(setTimeout(f,ms))}
+  function reset(){
+    timers.forEach(clearTimeout);timers.length=0;
+    wires.forEach(w=>w.beams.forEach(p=>{p.style.transition='none';p.classList.remove('lit');p.getBoundingClientRect();p.style.transition=''}));
+    gates.forEach(g=>{g.bc.setAttribute('fill','#fff');g.bc.setAttribute('stroke','#94a3b8');g.bt.setAttribute('fill','#475569');g.bt.textContent='?'});
+  }
+  const ignite=w=>{if(w.src.v)w.beams.forEach(p=>p.classList.add('lit'))};
+  function show(g){
+    g.bt.textContent=g.v;g.bc.setAttribute('fill',g.v?'#2563eb':'#e2e8f0');
+    g.bc.setAttribute('stroke',g.v?'#1d4ed8':'#94a3b8');g.bt.setAttribute('fill',g.v?'#fff':'#334155');
+    g.bg.classList.remove('pop');void g.bg.getBoundingClientRect();g.bg.classList.add('pop');
+  }
+  const maxL=Math.max(...gates.map(g=>g.lvl));
+  function reveal(){
+    reset();gates.forEach(evalG);cb('start');
+    for(let L=0;L<=maxL;L++){
+      const t=L*1400;
+      later(t,()=>wires.filter(w=>w.lvl===L&&!w.out).forEach(ignite));
+      gates.filter(g=>g.lvl===L).forEach(g=>{
+        if(g.final){later(t+700,()=>wires.filter(w=>w.out&&w.gate===g).forEach(ignite));later(t+1300,()=>show(g))}
+        else later(t+700,()=>show(g));
+      });
+    }
+    later(maxL*1400+1400,()=>cb('done'));
+  }
+  reset();
+  return{reveal,reset,gates,inputs};
+}
+
+const OP={AND:(a,b)=>a&b,OR:(a,b)=>a|b};
+const rule={AND:'Gerbang AND bernilai 1 hanya jika kedua input bernilai 1.',OR:'Gerbang OR bernilai 1 jika minimal satu input bernilai 1.'};
+
+/* ---- 1. Satu gerbang ---- */
+const A1={l:'A',x:80,y:100,v:1},B1={l:'B',x:80,y:200,v:0};
+const G1={t:'AND',x:260,y:100,src:[A1,B1],lvl:0,final:true,l:'X'};
+function q1(){$('#q1').textContent=`Jika input A = ${A1.v} dan input B = ${B1.v} pada gerbang ${G1.t}, maka output X = ?`;$('#a1').hidden=true}
+const c1=Circuit($('#svg1'),[A1,B1],[G1],e=>{
+  if(e==='change'||e==='start')q1();
+  if(e==='done'){$('#a1').innerHTML=`<b>Jawaban:</b> ${A1.v} ${G1.t} ${B1.v} = <b>${G1.v}</b><br>${rule[G1.t]}`;$('#a1').hidden=false}
+});
+document.querySelectorAll('.pill').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.pill').forEach(x=>x.classList.toggle('on',x===b));
+  G1.setT(b.dataset.g);c1.reset();q1()});
+$('#go1').onclick=c1.reveal;
+$('#rs1').onclick=()=>{A1.v=0;B1.v=0;A1.draw();B1.draw();c1.reset();q1()};
+q1();
+
+/* ---- 2. Kombinasi ---- */
+const A=[['A',70,60,1],['B',70,150,0],['C',70,260,1],['D',70,350,0]].map(([l,x,y,v])=>({l,x,y,v}));
+const P={t:'OR',x:230,y:56,src:[A[0],A[1]],lvl:0,l:'P'};
+const Q={t:'AND',x:230,y:256,src:[A[2],A[3]],lvl:0,l:'Q'};
+const X={t:'OR',x:560,y:156,src:[P,Q],lvl:1,final:true,l:'X'};
+function q2(){$('#q2').textContent=`Gerbang OR: A = ${A[0].v}, B = ${A[1].v}. Gerbang AND: C = ${A[2].v}, D = ${A[3].v}. Hasil keduanya masuk ke gerbang OR. Berapa output X?`;$('#a2').hidden=true}
+const c2=Circuit($('#svg2'),A,[P,Q,X],e=>{
+  if(e==='change'||e==='start')q2();
+  if(e==='done'){$('#a2').innerHTML=`<b>Pembahasan:</b><br>P = ${A[0].v} OR ${A[1].v} = <b>${P.v}</b><br>Q = ${A[2].v} AND ${A[3].v} = <b>${Q.v}</b><br>X = P OR Q = ${P.v} OR ${Q.v} = <b>${X.v}</b>`;$('#a2').hidden=false}
+});
+$('#go2').onclick=c2.reveal;
+$('#rs2').onclick=()=>{A.forEach(n=>{n.v=0;n.draw()});c2.reset();q2()};
+q2();
+
+/* ---- Tab ---- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  $('#s1').hidden=t.dataset.t!=='s1';$('#s2').hidden=t.dataset.t!=='s2';
+});
+</script>
+</body>
+</html>
